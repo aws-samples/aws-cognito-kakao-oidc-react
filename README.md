@@ -92,7 +92,7 @@ For the convenience of deploying the React application, you can use AWS Amplify'
 
 You will create the necessary resources for login testing, including Amazon Cognito, using AWS CDK to provision AWS resources.
 
-1. Setup AWS CDK Toolkit
+1. Run `npm install -g aws-cdk ` to setup [AWS CDK Toolkit](https://docs.aws.amazon.com/cdk/v2/guide/cli.html)
 
 2. Open the `app.json` file and set the values of each property to the values you've noted from earlier. 
 
@@ -106,8 +106,9 @@ You will create the necessary resources for login testing, including Amazon Cogn
        "cognitoDomainPrefix": "kakao-oidc-"
    }
    ```
+3. Run `npm install` to install dependent packages
 
-3. Run `cdk deploy` to initiate the deployment. When you run the deployment, it will configure the following AWS services.
+4. Run `cdk deploy` to initiate the deployment. When you run the deployment, it will configure the following AWS services.
 
    * Amazon Cognito: Amazon Cognito instance to use Kakao Login as an Identity Provider
    * Amazon API Gateway: A service endpoint for testing. Upon successful Kakao Login, validate the received authentication token to ensure its validity, and then proceed to call the backend function.
@@ -142,7 +143,7 @@ You will create the necessary resources for login testing, including Amazon Cogn
 
    Once the deployment is complete, the resource information will be displayed in the **Outputs**. It's essential to **make a note of all these values**, as they will be used in the subsequent configuration.
 
-4. In the [Kakao Developer](https://developers.kakao.com/) site, set the Redirect URI under the Kakao Login product settings page for Kakao Login as follows:
+5. In the [Kakao Developer](https://developers.kakao.com/) site, set the Redirect URI under the Kakao Login product settings page for Kakao Login as follows:
 
    `https://<CognitoKakaoCognitoUserPoolDomainPrefix>.auth.ap-northeast-2.amazoncognito.com/oauth2/idpresponse`
 

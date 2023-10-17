@@ -35,8 +35,6 @@ function App() {
       switch (event) {
         case "signIn":
           setUser(data);
-          console.log("signIn user ="+JSON.stringify(data));
-          console.log("token ="+data.signInUserSession.idToken.jwtToken);
           break;
         case "signOut":
           setUser(null);
