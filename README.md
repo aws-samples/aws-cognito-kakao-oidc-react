@@ -25,13 +25,13 @@ English follows Korean | 한국어버전 뒤에 영어버전이 있습니다
 2. 상단의 '내 애플리케이션'을 클릭하고 들어가서, 새로운 애플리케이션을 생성합니다.
 3. 좌측 패널의 '요약 정보' 메뉴에서 APP Key > REST API Key 를 메모합니다. **-- (1)**
 4. 좌측 패널의 '카카오 로그인' 에서, `활성화 설정`은 ON, `OpenID Connect 활성화 설정`을 ON 으로 합니다.
-5. 좌측 패널의 '카카오 로그인' > '보안' 에서, Client Secret 을 발급받은 후 `코드` 값을 메모합니다. **-- (2)**
+5. 좌측 패널의 '카카오 로그인' > '보안' 에서, Client Secret 을 발급받고, 활성화 상태를 `사용함`으로 설정합니다. 그리고 `코드` 값을 메모합니다. **-- (2)**
 
 
 
 ### 2. 애플리케이션 환경 구성
 
-React 애플리케이션을 배포할 때 편의상 [AWS Amplify](https://docs.amplify.aws/) 의 Hosting 기능을 사용해서 배포합니다.
+React 애플리케이션을 배포할 때 편의상 [AWS Amplify](https://docs.amplify.aws/) 의 [Amplify Hosting](https://aws.amazon.com/amplify/hosting) 기능을 사용해서 배포합니다.
 
 1. 아래와 같이 [Amplify CLI](https://docs.amplify.aws/cli/)를 설치합니다. 
 
@@ -41,7 +41,9 @@ React 애플리케이션을 배포할 때 편의상 [AWS Amplify](https://docs.a
 
 2. `app` 디렉터리로 이동 합니다.
 
-3. `amplify init` 명령을 실행해서 Amplify 프로젝트를 초기화 합니다. 프로젝트 이름 설정 후 나머지는 기본값으로 진행합니다.
+3. `npm install` 을 실행해서 참조하고 있는 패키지를 설치합니다.
+
+4. `amplify init` 명령을 실행해서 Amplify 프로젝트를 초기화 합니다. 프로젝트 이름 설정 후 나머지는 기본값으로 진행합니다.
 
    * Select the authentication method you want to use: 에서는 기존에 설정한 AWS Profile이 있다면 그것을 이용하거나, 직접 AWS access keys를 입력해도 됩니다. 이 Amplify에 대한 별도의 AWS Profile 을 구성하고 싶다면 [Configure the Amplify CLI](https://docs.amplify.aws/cli/start/install/#configure-the-amplify-cli) 문서를 참고해주세요.
 
@@ -73,7 +75,7 @@ React 애플리케이션을 배포할 때 편의상 [AWS Amplify](https://docs.a
    Adding backend environment dev to AWS Amplify app: d3kb7hrd0defgz
    ```
 
-4. `amplify hosting add` 명령으로 호스팅 환경을 구성합니다. 선택 옵션은 모두 기본값으로 선택합니다. (<엔터> 키로 기본값 설정)
+5. `amplify hosting add` 명령으로 호스팅 환경을 구성합니다. 선택 옵션은 모두 기본값으로 선택합니다. (<엔터> 키로 기본값 설정)
 
    ```
    $ amplify hosting add
@@ -85,9 +87,9 @@ React 애플리케이션을 배포할 때 편의상 [AWS Amplify](https://docs.a
    Command: amplify publish
    ```
 
-5. `amplify publish` 명령으로 React 애플리케이션을 발행합니다.
+6. `amplify publish` 명령으로 React 애플리케이션을 발행합니다.
 
-6. 화면에 하단에 출력되는 서비스 URL을 메모합니다. **-- (3)**
+7. 화면에 하단에 출력되는 서비스 URL을 메모합니다. **-- (3)**
 
 
 
@@ -95,9 +97,11 @@ React 애플리케이션을 배포할 때 편의상 [AWS Amplify](https://docs.a
 
 Amazon Cognito를 포함한, 백엔드 리소스를 생성합니다. AWS 리소스는 AWS CDK를 사용해서 생성하게 됩니다.
 
-1. `npm install -g aws-cdk` 를 실행해서 [AWS CDK Toolkit](https://docs.aws.amazon.com/cdk/v2/guide/cli.html) 을 설치합니다.
+1. 프로젝트 루트의 cdk 디렉터리로 이동합니다.
 
-2. `app.json` 파일을 열어서 각 property 의 값을 위에서 메모한 값으로 설정합니다. 
+2. `npm install -g aws-cdk` 를 실행해서 [AWS CDK Toolkit](https://docs.aws.amazon.com/cdk/v2/guide/cli.html) 을 설치합니다.
+
+3. `app.json` 파일을 열어서 각 property 의 값을 위에서 메모한 값으로 설정합니다. 
 
    ```
    {
@@ -110,9 +114,7 @@ Amazon Cognito를 포함한, 백엔드 리소스를 생성합니다. AWS 리소�
    }
    ```
 
-3. `npm install` 을 실행해서 패키를 설치합니다.
-
-4. `cdk bootstrap` 을 실행해서 현재 계정에 대한 CDK 환경을 구성합니다.
+4. `npm install` 을 실행해서 패키를 설치합니다.
 
 5. `cdk deploy` 를 실행해서 배포합니다. 배포를 실행하면 다음과 같은 AWS 서비스를 구성합니다.
 
@@ -137,19 +139,19 @@ Amazon Cognito를 포함한, 백엔드 리소스를 생성합니다. AWS 리소�
    ✨  Deployment time: 11.38s
    
    Outputs:
-   CognitoKakaoOIDC.CognitoKakaoCognitoUserPoolClientIdC64E0A60 = ehk0v05g56u8tlpm4hd9ndu7i
-   CognitoKakaoOIDC.CognitoKakaoCognitoUserPoolDomainPrefix67F1CBC9 = kakao-oidc-803936485311
-   CognitoKakaoOIDC.CognitoKakaoCognitoUserPoolIdD8B52A3A = ap-northeast-2_D7MVo9agp
+   CognitoKakaoOIDC.CognitoKakaoCognitoUserPoolClientIdC64E0A60 = ahk0v05g56u8tlpm4hd9ndu7i
+   CognitoKakaoOIDC.CognitoKakaoCognitoUserPoolDomainPrefix67F1CBC9 = kakao-oidc-11111111111
+   CognitoKakaoOIDC.CognitoKakaoCognitoUserPoolIdD8B52A3A = ap-northeast-2KD7MVo9agp
    CognitoKakaoOIDC.QuotesApiEndpoint12EC1C79 = https://d94x3w0wdf.execute-api.ap-northeast-2.amazonaws.com/prod/
    Stack ARN:
-   arn:aws:cloudformation:ap-northeast-2:803936485311:stack/CognitoKakaoOIDC/ee4f6fe0-68a5-11ee-9e3b-0a9db66fa1b2
+   arn:aws:cloudformation:ap-northeast-2:11111111111:stack/CognitoKakaoOIDC/ae4f6fe0-68a5-11es-9e3b-0aaeb66fa1b2
    
    ✨  Total time: 14.16s
    ```
 
    배포가 완료되면 Outputs 에 리소스 정보가 출력됩니다. 이 값들은 이후 구성에서 사용하므로 **모두 메모**합니다.
 
-6. Kakao Developers 의 '카카오 로그인' 에서 Redirect URI 를 아래와 같이 설정합니다
+6. Kakao Developers 사이트의 애플리케이션 제품 설정 페이지에서, 좌측 메뉴의 '카카오 로그인' 클릭 후, Redirect URI 값을 아래와 같이 설정합니다
 
    ```
    https://<CognitoKakaoCognitoUserPoolDomainPrefix>.auth.ap-northeast-2.amazoncognito.com/oauth2/idpresponse
@@ -159,7 +161,7 @@ Amazon Cognito를 포함한, 백엔드 리소스를 생성합니다. AWS 리소�
 
 ### 4. 애플리케이션의 환경 구성
 
-app 디렉터리로 이동 후 `src/App.js` 파일을 열어 인증을 구성하고 서비스 앤드포인트 호출을 위한 프로퍼티 값을 입력합니다. 값을 입력할 때 위에서 메모했던 값들을 그대로 사용합니다.
+프로젝트 루트에서 `app` 디렉터리로 이동 후 `src/App.js` 파일을 열어 인증을 구성하고 서비스 앤드포인트 호출을 위한 프로퍼티 값을 입력합니다. 값을 입력할 때 위에서 메모했던 값들을 그대로 사용합니다.
 
 ```
 ...
@@ -187,7 +189,7 @@ const identityProvider = "KakaoProvider";
 
 ### 5. 애플리케이션 실행
 
-1. `amplify publish` 를 실행했을 때 출력되는 서비스 URL로 접속합니다. 
+1. `amplify publish` 를 실행결과 화면에 출력되는 서비스 URL로 접속합니다. 
 2. Sign in with Kakao 버튼을 클릭하면 Kakao 로그인 화면이 표시되면, Kakao ID, Password를 입력합니다.
 3. 인증이 성공되면 애플리케이션은 API Gateway를 호출하고, 인증키가 유효하다면 Lambda 함수를 호출한 결과를 화면에 출력합니다.
 4. 끝 !
@@ -232,7 +234,7 @@ This project consists of CDK code for configuring AWS resources include Amazon C
 2. Add a new application in 'My Application' menu.
 3. In the left panel's 'Summary' menu, make a note of the "APP Key > **REST API Key**" ***- (1)***
 4. In the left panel's 'Kakao Login' menu, make the `Kakao Login Activation` and `OpenID Connect Activation` to ON
-5. In the left panel, under 'Kakao Login > Security', generate the **Client Secret** after issuance and make a note of it. ***- (2)***
+5. In the left panel, under 'Kakao Login > Security', generate the **Client Secret** and activate it. Then, make a note of the Client Secret code. ***- (2)***
 
 
 
@@ -320,9 +322,7 @@ You will create the necessary resources for login testing, including Amazon Cogn
    ```
 3. Run `npm install` to install dependent packages
 
-4. Run `cdk bootstarp` to initialize CDK environment.
-
-5. Run `cdk deploy` to initiate the deployment. When you run the deployment, it will configure the following AWS services.
+4. Run `cdk deploy` to initiate the deployment. When you run the deployment, it will configure the following AWS services.
 
    * Amazon Cognito: Amazon Cognito instance to use Kakao Login as an Identity Provider
    * Amazon API Gateway: A service endpoint for testing. Upon successful Kakao Login, validate the received authentication token to ensure its validity, and then proceed to call the backend function.
@@ -357,7 +357,7 @@ You will create the necessary resources for login testing, including Amazon Cogn
 
    Once the deployment is complete, the resource information will be displayed in the **Outputs**. It's essential to **make a note of all these values**, as they will be used in the subsequent configuration.
 
-6. In the [Kakao Developer](https://developers.kakao.com/) site, set the Redirect URI under the Kakao Login product settings page for Kakao Login as follows:
+5. On the [Kakao Developers](https://developers.kakao.com/) website, navigate to the application product settings page. Click on 'Kakao Login' in the left menu, and set the Redirect URI as follows:
 
    `https://<CognitoKakaoCognitoUserPoolDomainPrefix>.auth.ap-northeast-2.amazoncognito.com/oauth2/idpresponse`
 
