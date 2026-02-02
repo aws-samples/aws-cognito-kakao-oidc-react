@@ -1,8 +1,0 @@
-{
-    "clientId": "<REST API Key from (1)>",
-    "clientSecret": "<Client Secret from (2)>",
-    "issuerUrl": "https://kauth.kakao.com",
-    "callbackUrl": "<Service URL from (3)>",
-    "logoutUrl": "<Service URL from (3)>",
-    "cognitoDomainPrefix": "kakao-oidc-"
-}
