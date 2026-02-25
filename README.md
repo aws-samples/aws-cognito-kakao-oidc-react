@@ -13,13 +13,13 @@ To save time and disk space, we recommend cloning only the directories you need 
 
 You can do this using `git sparse-checkout`.
 
-For example, if you want to clone the `agentic-workloads/aws-apj-sample-1` project, run:
+For example, if you want to clone the `agentic-workloads/sample-1` project, run:
 
    ```
    git clone https://github.com/aws-samples/sample-apj-sup-sa.git
    cd sample-apj-sup-sa
    git sparse-checkout init --cone
-   git sparse-checkout set agentic-workloads/aws-apj-sample-1
+   git sparse-checkout set agentic-workloads/sample-1
    ```
 
 For more details on `git sparse-checkout`, see:
