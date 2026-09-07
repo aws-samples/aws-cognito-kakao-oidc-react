@@ -77,11 +77,11 @@ For each plugin:
    Three to six phrases in the user's language, each with the situation it covers. **Recommend only** —
    do not write them into `plugin.json` unless asked.
 3. Tell them to start a new session. Powers and skills load at session start.
-4. If the plugin went into a Power (skills stayed inside it, not `~/.kiro/skills/`), warn that asking
-   for a skill by name — or even naming the Power itself — often fails, because the model's file
-   search does not reliably look inside `~/.kiro/powers/installed/`; it can go either way with the
-   same phrasing. The one thing that works every time is giving the skill's exact path
-   (`~/.kiro/powers/installed/<plugin>/skills/<skill>/SKILL.md`).
+4. If the plugin went into a Power (skills stayed inside it, not `~/.kiro/skills/`), mention that its
+   skills resolve by plain-language request in a `kiro-cli --v3` session (a native `Kiro Powers` tool
+   reads them by name) — but only there. In classic mode or `--no-interactive`, that tool isn't
+   available and asking by name won't reliably find it; giving the skill's exact path
+   (`~/.kiro/powers/installed/<plugin>/skills/<skill>/SKILL.md`) is the fallback that works everywhere.
 
 ## 4. Removing
 
