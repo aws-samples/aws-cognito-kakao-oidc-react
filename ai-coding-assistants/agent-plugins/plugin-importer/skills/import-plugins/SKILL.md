@@ -30,7 +30,7 @@ python3 $S scan --from <source>      # a marketplace or plugin repo: URL, owner/
 by tool. Project-scoped Claude Code installs appear only when Kiro runs inside that project, matching
 Claude Code's own visibility.
 
-With `--from`, entries whose source points at another git repository print as `원격: <url>`. `port`
+With `--from`, entries whose source points at another git repository print as `remote: <url>`. `port`
 fetches only the ones you name, so always pass explicit names unless the marketplace is small.
 
 **Ask which ones rather than defaulting to everything.** Each Power the user does not need is context
@@ -68,13 +68,15 @@ For each plugin:
    `description` lines, then append to the report:
 
    ```
-   ## 권장 키워드
-   이 Power가 켜져야 하는 상황에서 사용자가 실제로 칠 단어입니다. 적용하려면 plugin.json 의 keywords 에 추가하세요.
-   - 커밋       — "커밋해줘", "변경사항 커밋" 같은 요청
-   - PR 만들기  — …
+   ## Suggested keywords
+   Phrases the user would actually type when this Power should activate. Add them to
+   plugin.json's keywords to apply.
+   - commit       — requests like "commit this", "commit my changes"
+   - open a PR    — …
    ```
 
-   Three to six phrases in the user's language, each with the situation it covers. **Recommend only** —
+   Three to six phrases in the user's language (Korean, English, or whatever they use), each with
+   the situation it covers. **Recommend only** —
    do not write them into `plugin.json` unless asked.
 3. Tell them to start a new session. Powers and skills load at session start.
 4. If the plugin went into a Power (skills stayed inside it, not `~/.kiro/skills/`), mention that its
