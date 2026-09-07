@@ -121,6 +121,7 @@ activate after an import, this is almost always why.
 | `skills/import-plugins` | skill | Runs the import, reads the report back, suggests keywords. |
 | `skills/import-plugins/scripts/kiro-port.py` | script | The converter. Python 3.11+, standard library only. |
 | `skills/import-plugins/references/kiro-mapping.md` | reference | Per-component mapping and Kiro behaviours. |
+| `tests/regression-test.py` | tests | `python3 tests/regression-test.py` — ports synthetic fixtures into a temporary `KIRO_HOME`. No framework, no network. |
 
 Running the converter directly, if you prefer:
 

@@ -132,18 +132,35 @@ def scan_sources() -> list[dict]:
     return out
 
 
+def safe_name(name) -> bool:
+    """A plugin name is used as a single path segment under ~/.kiro and as a Power name.
+    Anything else (absolute path, `..`, separators, shell metacharacters) is rejected —
+    marketplace.json fetched with --from is untrusted input."""
+    return isinstance(name, str) and name not in (".", "..") and re.fullmatch(r"[\w.-]{1,64}", name) is not None
+
+
 def marketplace_plugins(root: Path, fetch: bool = False, only: set | None = None) -> list[dict]:
     """Plugin list inside a marketplace repo (.claude-plugin/marketplace.json).
     An entry's `source` is either a string (path inside the repo) or a dict pointing at another
     git repo (`url` / `git-subdir` / `github`). fetch=True also fetches that other repo.
-    If there's no marketplace.json and the repo itself is a plugin, that's the one entry."""
+    If there's no marketplace.json and the repo itself is a plugin, that's the one entry.
+    Entries whose `name` isn't a safe path segment, or whose `source` resolves outside the
+    fetched repo, are skipped with a warning — those values come from the remote repo."""
     mj = root / ".claude-plugin/marketplace.json"
     items = []
+    root_r = root.resolve()
     if mj.exists():
         for e in json.loads(mj.read_text()).get("plugins", []):
+            name = e.get("name")
+            if not safe_name(name):
+                print(f"   ⚠️ skipped a marketplace entry with an unsafe name: {name!r} (must match [\\w.-]{{1,64}})")
+                continue
             src, p = e.get("source"), None
             if isinstance(src, str):
                 p = (root / src).resolve()
+                if not p.is_relative_to(root_r):
+                    print(f"   ⚠️ {name}: `source` points outside the marketplace repo ({src!r}), skipped")
+                    continue
                 p = p if p.is_dir() else None
             elif isinstance(src, dict):
                 if not fetch or (only is not None and e["name"] not in only):
@@ -154,16 +171,24 @@ def marketplace_plugins(root: Path, fetch: bool = False, only: set | None = None
                 repo = src.get("url") or src.get("repo") or ""
                 if repo:
                     try:
-                        p = fetch_source(repo, ref=src.get("ref")) / (src.get("path") or "")
+                        fetched = fetch_source(repo, ref=src.get("ref")).resolve()
+                        p = (fetched / (src.get("path") or "")).resolve()
+                        if not p.is_relative_to(fetched):
+                            print(f"   ⚠️ {name}: remote `path` points outside its repo ({src.get('path')!r}), skipped")
+                            continue
                     except subprocess.CalledProcessError:
                         p = None
                     p = p if p and p.is_dir() else None
             if p:
-                items.append({"name": e["name"], "path": p, "version": str(e.get("version", "")),
+                items.append({"name": name, "path": p, "version": str(e.get("version", "")),
                               "description": e.get("description", "")})
     elif (root / ".claude-plugin/plugin.json").exists() or (root / "plugin.json").exists():
         m = json.loads(next(p for p in (root / ".claude-plugin/plugin.json", root / "plugin.json") if p.exists()).read_text())
-        items.append({"name": m.get("name", root.name), "path": root, "version": str(m.get("version", "")),
+        name = m.get("name", root.name)
+        if not safe_name(name):
+            print(f"   ⚠️ plugin.json `name` {name!r} isn't a safe path segment, using the directory name `{root.name}`")
+            name = root.name
+        items.append({"name": name, "path": root, "version": str(m.get("version", "")),
                       "description": m.get("description", "")})
     return items
 
@@ -366,7 +391,7 @@ class Port:
                     if h.get("type", "command") != "command":
                         skipped.append(f"{event}[{i}].hooks[{j}] type={h.get('type')}")
                         continue
-                    cmd = f'CLAUDE_PLUGIN_ROOT="{self.dst}" ' + self.sub_root(h["command"])
+                    cmd = f"CLAUDE_PLUGIN_ROOT={shlex.quote(str(self.dst))} " + self.sub_root(h["command"])
                     # `shell` says which shell to run this command through. Kiro's hook has no
                     # matching field, so the command itself is wrapped in that shell — dropping it
                     # would run a `.cmd`-style file directly and fail.
@@ -455,7 +480,10 @@ def install_skills_only(power_dir: Path, report: list[str], name: str) -> None:
     dst_root = KIRO / "skills"
     dst_root.mkdir(parents=True, exist_ok=True)
     placed = []
-    skill_dirs = sorted((power_dir / "skills").iterdir())
+    skill_dirs = sorted((power_dir / "skills").iterdir()) if (power_dir / "skills").is_dir() else []
+    if not skill_dirs:
+        report.append("- ❌ Nothing to place as skills — this plugin has no `skills/` directory. "
+                       "Use `--as power` (commands, MCP servers and agents can only live in a Power)")
     for sk in skill_dirs:
         if not (sk / "SKILL.md").exists():
             continue
@@ -487,7 +515,7 @@ def install_skills_only(power_dir: Path, report: list[str], name: str) -> None:
         shared_copied.append(shared.name)
     if shared_copied:
         report.append(f"- Also moved {len(shared_copied)} shared folder(s) referenced by skills: {shared_copied}")
-    total_src = len([sk for sk in (power_dir / "skills").iterdir() if (sk / "SKILL.md").exists()])
+    total_src = len([sk for sk in skill_dirs if (sk / "SKILL.md").exists()])
     if total_src and not placed:
         report.append("- ❌ No skills were moved — all of them were skipped on a name clash. "
                        "Same folder name doesn't mean same content across plugins "
@@ -538,33 +566,110 @@ def install_skills_only(power_dir: Path, report: list[str], name: str) -> None:
     _manifest_put(name, {"mode": "skills", "skills": placed, "hooks": hooks, "agents": agents})
 
 
-def install_project_local(power_dir: Path, project: Path, report: list[str]) -> None:
-    """Unpack into the project's .kiro/ instead of a Power (matches CC's project scope)."""
+def project_manifest(project: Path) -> Path:
+    """Project-local installs are recorded inside the project, so `unport` run from that project
+    can undo exactly what was written there — the global manifest never sees them."""
+    return project / ".kiro/.kiro-port-manifest.json"
+
+
+def install_project_local(power_dir: Path, project: Path, report: list[str], name: str) -> None:
+    """Unpack into the project's .kiro/ instead of a Power (matches CC's project scope).
+    Everything written is recorded in the project manifest for `unport`."""
     k = project / ".kiro"
+    skills, hooks, agents, mcp_keys = [], [], [], []
     for sk in (power_dir / "skills").iterdir() if (power_dir / "skills").is_dir() else []:
         dst = k / "skills" / sk.name
         if dst.exists():
             report.append(f"- ⚠️ `{dst}` already exists, skipped")
             continue
         shutil.copytree(sk, dst)
-    report.append(f"- Skills → `{k / 'skills'}`")
-    for hook in (power_dir / "dev.kiro/hooks").glob("*.json"):
+        skills.append(sk.name)
+    report.append(f"- Skills → `{k / 'skills'}`: {skills}")
+    # ${CLAUDE_PLUGIN_ROOT} was substituted with the staging path, which the caller deletes.
+    # Anything that still points there (hook scripts, references/) is kept under .kiro and rewritten.
+    hook_files = list((power_dir / "dev.kiro/hooks").glob("*.json"))
+    needs_assets = bool(hook_files) or any(
+        str(power_dir) in (k / "skills" / s / "SKILL.md").read_text(errors="ignore") for s in skills)
+    asset_root = None
+    if needs_assets:
+        asset_root = k / ".kiro-port-assets" / name
+        if asset_root.exists():
+            shutil.rmtree(asset_root)
+        asset_root.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(power_dir, asset_root, ignore=shutil.ignore_patterns("dev.kiro", "PORT-REPORT.md"))
+        report.append(f"- Preserved referenced files at `{asset_root}`")
+        for s in skills:
+            p = k / "skills" / s / "SKILL.md"
+            body = p.read_text(errors="ignore")
+            if str(power_dir) in body:
+                p.write_text(body.replace(str(power_dir), str(asset_root)))
+    for hook in hook_files:
         (k / "hooks").mkdir(parents=True, exist_ok=True)
-        shutil.copy(hook, k / "hooks" / hook.name)
+        body = hook.read_text()
+        if asset_root:
+            body = body.replace(str(power_dir), str(asset_root))
+        (k / "hooks" / hook.name).write_text(body)
+        hooks.append(hook.name)
         report.append(f"- Hook → `{k / 'hooks' / hook.name}`")
     for ag in (power_dir / "dev.kiro/agents").glob("*.md"):
         (k / "agents").mkdir(parents=True, exist_ok=True)
-        if not (k / "agents" / ag.name).exists():
-            shutil.copy(ag, k / "agents" / ag.name)
-            report.append(f"- Agent → `{k / 'agents' / ag.name}`")
+        if (k / "agents" / ag.name).exists():
+            report.append(f"- ⚠️ `{k / 'agents' / ag.name}` already exists, skipped")
+            continue
+        shutil.copy(ag, k / "agents" / ag.name)
+        agents.append(ag.name)
+        report.append(f"- Agent → `{k / 'agents' / ag.name}`")
     mcp = power_dir / "mcp.json"
     if mcp.exists():
         target = k / "settings/mcp.json"
         cur = _load(target, {"mcpServers": {}})
-        cur.setdefault("mcpServers", {}).update(json.loads(mcp.read_text())["mcpServers"])
+        servers = cur.setdefault("mcpServers", {})
+        for key, val in json.loads(mcp.read_text())["mcpServers"].items():
+            if key in servers:
+                report.append(f"- ⚠️ MCP server `{key}` already defined in `{target}`, left as is")
+                continue
+            servers[key] = val
+            mcp_keys.append(key)
         _save(target, cur)
-        report.append(f"- MCP → merged into `{target}`")
+        report.append(f"- MCP → merged into `{target}`: {mcp_keys}")
+    man_p = project_manifest(project)
+    man = _load(man_p, {})
+    man[name] = {"mode": "project", "skills": skills, "hooks": hooks, "agents": agents, "mcp": mcp_keys,
+                 "assets": asset_root is not None}
+    _save(man_p, man)
     report.append("- Note: project-local isn't a Power, so there's no keywords activation. Skills work through Kiro's default skill matching")
+
+
+def unregister_project(name: str, project: Path) -> bool:
+    """Undo a --project-local install recorded in the project manifest. Returns whether one was found."""
+    man_p = project_manifest(project)
+    man = _load(man_p, {})
+    ent = man.get(name)
+    if not ent:
+        return False
+    k = project / ".kiro"
+    for sk in ent.get("skills", []):
+        shutil.rmtree(k / "skills" / sk, ignore_errors=True)
+    for h in ent.get("hooks", []):
+        (k / "hooks" / h).unlink(missing_ok=True)
+    for a in ent.get("agents", []):
+        (k / "agents" / a).unlink(missing_ok=True)
+    shutil.rmtree(k / ".kiro-port-assets" / name, ignore_errors=True)
+    if ent.get("mcp"):
+        target = k / "settings/mcp.json"
+        cur = _load(target, {"mcpServers": {}})
+        for key in ent["mcp"]:
+            cur.get("mcpServers", {}).pop(key, None)
+        _save(target, cur)
+    (k / ".kiro-port-reports" / f"{name}.md").unlink(missing_ok=True)
+    del man[name]
+    if man:
+        _save(man_p, man)
+    else:
+        man_p.unlink(missing_ok=True)
+    print(f"removed {name} from {k} ({len(ent.get('skills', []))} skill(s), "
+          f"{len(ent.get('hooks', []))} hook(s), {len(ent.get('mcp', []))} MCP server(s))")
+    return True
 
 
 def register(name: str, power_dir: Path, report: list[str]) -> None:
@@ -595,7 +700,12 @@ def register(name: str, power_dir: Path, report: list[str]) -> None:
         report.append(f"- Agent installed: `{dst}`")
 
 
-def unregister(name: str) -> None:
+def unregister(name: str, cwd: Path) -> bool:
+    """Remove everything an import installed. Checks the current project's manifest first
+    (--project-local), then the global manifest (skills mode), then the Power directory.
+    Returns False — and touches nothing — when no record of `name` exists anywhere."""
+    if unregister_project(name, cwd):
+        return True
     man = _load(MANIFEST, {})
     ent = man.get(name)
     if ent and ent.get("mode") == "skills":
@@ -608,29 +718,37 @@ def unregister(name: str) -> None:
         shutil.rmtree(KIRO / ".kiro-port-assets" / name, ignore_errors=True)
         for a in ent.get("agents", []):
             (KIRO / "agents" / a).unlink(missing_ok=True)
+        (KIRO / ".kiro-port-reports" / f"{name}.md").unlink(missing_ok=True)
         del man[name]
         _save(MANIFEST, man)
         print(f"removed {name} ({len(ent.get('skills', []))} skill(s))")
-        return
+        return True
+    power_dir = KIRO / "powers/installed" / name
+    reg_p = KIRO / "powers/registries/user-added.json"
+    inst_p = KIRO / "powers/installed.json"
+    reg = _load(reg_p, {"powers": []})
+    inst = _load(inst_p, {"installedPowers": []})
+    registered = any(p.get("name") == name for p in reg["powers"]) or \
+        any(p.get("name") == name for p in inst["installedPowers"])
+    if not power_dir.is_dir() and not registered and not ent:
+        print(f"nothing to remove: no import named `{name}` in this project, in the global manifest, "
+              f"or under {KIRO / 'powers/installed'}")
+        return False
     if ent:
         del man[name]
         _save(MANIFEST, man)
-    power_dir = KIRO / "powers/installed" / name
     if power_dir.is_dir():
         for hook in (power_dir / "dev.kiro/hooks").glob("*.json"):
             (KIRO / "hooks" / hook.name).unlink(missing_ok=True)
         for ag in (power_dir / "dev.kiro/agents").glob("*.md"):
             (KIRO / "agents" / ag.name).unlink(missing_ok=True)
         shutil.rmtree(power_dir)
-    reg_p = KIRO / "powers/registries/user-added.json"
-    reg = _load(reg_p, {"powers": []})
-    reg["powers"] = [p for p in reg["powers"] if p["name"] != name]
+    reg["powers"] = [p for p in reg["powers"] if p.get("name") != name]
     _save(reg_p, reg)
-    inst_p = KIRO / "powers/installed.json"
-    inst = _load(inst_p, {"installedPowers": []})
-    inst["installedPowers"] = [p for p in inst["installedPowers"] if p["name"] != name]
+    inst["installedPowers"] = [p for p in inst["installedPowers"] if p.get("name") != name]
     _save(inst_p, inst)
     print(f"removed {name}")
+    return True
 
 
 def smoke(names: list[str]) -> None:
@@ -671,9 +789,10 @@ def main() -> None:
     cwd = Path.cwd().resolve()
 
     if a.cmd == "unport":
-        for n in a.names:
-            unregister(n)
-        return
+        if not a.names:
+            sys.exit("unport: name at least one plugin")
+        ok = [unregister(n, cwd) for n in a.names]
+        sys.exit(0 if all(ok) else 1)
 
     if a.src:
         root = fetch_source(a.src)
@@ -739,6 +858,9 @@ def main() -> None:
     taken = {p.name for p in (KIRO / "powers/installed").iterdir()} if (KIRO / "powers/installed").is_dir() else set()
     for s in picked:
         name = s["name"]
+        if not safe_name(name):
+            print(f"\n== {name!r}  → skipped: not a safe plugin name (must match [\\w.-]{{1,64}})")
+            continue
         kind, ncomp = classify(Path(s["path"]))
         mode = a.mode if a.mode != "auto" else recommend(kind)
         if a.project_local:
@@ -763,6 +885,9 @@ def main() -> None:
             name = alt
         taken.add(name)
         power_dir = base / name
+        if not power_dir.resolve().is_relative_to(base.resolve()):
+            print(f"   ⛔ `{power_dir}` resolves outside `{base}`. Skipped.")
+            continue
         where = (f"{cwd}/.kiro/" if mode == "project" else
                  f"{KIRO}/skills/" if mode == "skills" else power_dir)
         why = {"skills": "skills-only, not wrapped in a Power", "power": f"{kind} components", "project": "project-local"}[mode]
@@ -778,7 +903,10 @@ def main() -> None:
         report = [f"# Port report — {name}", f"source: `{s['path']}` ({s['tool']} marketplace `{s['market']}`, scope {s['scope']})", ""]
         Port(s["path"], power_dir, report).run(name, s["version"])
         if mode == "project":
-            install_project_local(power_dir, cwd, report)
+            install_project_local(power_dir, cwd, report, name)
+            shutil.rmtree(power_dir)  # staging only — the real files are in .kiro/{skills,hooks,agents}
+            if base.is_dir() and not any(base.iterdir()):
+                base.rmdir()
         elif mode == "skills" and not a.out:
             install_skills_only(power_dir, report, name)
             shutil.rmtree(power_dir)  # no staging leftovers kept
@@ -801,8 +929,8 @@ def main() -> None:
                        "- Agents are plain markdown under `~/.kiro/agents/`. Tool restrictions (`tools`) are stripped"]
         if power_dir.exists():
             (power_dir / "PORT-REPORT.md").write_text("\n".join(report) + "\n")
-        else:  # skills mode leaves no Power directory, so the report is kept separately
-            rp = KIRO / ".kiro-port-reports" / f"{name}.md"
+        else:  # skills and project modes leave no Power directory, so the report is kept separately
+            rp = (cwd / ".kiro" if mode == "project" else KIRO) / ".kiro-port-reports" / f"{name}.md"
             rp.parent.mkdir(parents=True, exist_ok=True)
             rp.write_text("\n".join(report) + "\n")
         print("\n".join(report[3:]))

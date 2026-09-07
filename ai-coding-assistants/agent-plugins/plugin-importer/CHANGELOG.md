@@ -2,6 +2,22 @@
 
 ## 1.1.0
 
+- Marketplace metadata is treated as untrusted. An entry's `name` must be a single path segment
+  (`[\w.-]{1,64}`); a string `source` or a remote `path` must resolve inside its repository.
+  Entries that fail either check are skipped with a warning, and the install directory is checked
+  against its base before anything is copied. The `CLAUDE_PLUGIN_ROOT` prefix in generated hook
+  commands is shell-quoted.
+- `--project-local` installs are recorded in the project's `.kiro/.kiro-port-manifest.json` — skills,
+  hooks, agents and the MCP server keys merged into `.kiro/settings/mcp.json`. `unport` run from that
+  project removes exactly those, the staging copy under `.kiro/.ported/` is deleted after the install,
+  and hook scripts the plugin ships are kept under `.kiro/.kiro-port-assets/<name>/` so the installed
+  hooks still resolve.
+- `unport` exits non-zero and changes nothing when it finds no record of the name, instead of
+  printing `removed`.
+- `--as skills` on a plugin with no `skills/` directory no longer crashes and leaves a half-built
+  staging directory behind; it reports that there is nothing to place and points at `--as power`.
+- `tests/regression-test.py` — 71 checks against synthetic fixtures in an isolated `KIRO_HOME`, no
+  framework, no network.
 - Flat-list `hooks.json` variants (`{"hooks": [{"event": ...}]}`) are now accepted alongside the
   nested form, without renaming event names — they carry over unchanged.
 - Skills-only installs no longer silently drop everything when a folder name collides with an

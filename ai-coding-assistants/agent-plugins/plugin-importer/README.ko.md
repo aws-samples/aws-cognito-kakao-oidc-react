@@ -110,6 +110,7 @@ Kiro는 슬래시가 아니라 **키워드**로 Power를 켭니다. 이 플러�
 | `skills/import-plugins` | 스킬 | 이식을 진행하고 보고서를 읽어주고 키워드를 제안합니다. |
 | `skills/import-plugins/scripts/kiro-port.py` | 스크립트 | 변환기. Python 3.11+, 표준 라이브러리만. |
 | `skills/import-plugins/references/kiro-mapping.md` | 참고 자료 | 컴포넌트별 대응과 Kiro 동작. |
+| `tests/regression-test.py` | 테스트 | `python3 tests/regression-test.py` — 임시 `KIRO_HOME`에 합성 픽스처를 이식해 확인합니다. 프레임워크·네트워크 없음. |
 
 변환기를 직접 쓰려면:
 
