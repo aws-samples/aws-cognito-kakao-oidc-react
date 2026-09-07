@@ -28,6 +28,10 @@ Kiro **Powers** 패널 → **Add Custom Power** → **Import power from a folder
 `ai-coding-assistants/agent-plugins/plugin-importer` 선택. 이 디렉터리의 GitHub 주소를 붙여 넣어도 됩니다.
 Power는 세션 시작 시 로드되므로 설치 후 새 세션을 여세요.
 
+**Kiro는 `kiro-cli --v3`로 실행하세요.** 클래식 모드나 `--no-interactive`에서도 Power·스킬은 정상 로드되지만,
+훅은 조용히 아무 동작도 하지 않습니다 — 어느 쪽이든 `/hooks`는 0으로 표시됩니다. 이식된 플러그인의 훅이
+실제로 발동하려면 `--v3`가 필요합니다.
+
 `python3`(3.11+)와 `git`이 `PATH`에 있어야 합니다. macOS·kiro-cli 2.21.0 환경을 기준으로 만들고
 점검했습니다. 다른 플랫폼·버전은 아직 확인하지 않았습니다.
 

@@ -30,6 +30,10 @@ Kiro **Powers** panel → **Add Custom Power** → **Import power from a folder*
 `ai-coding-assistants/agent-plugins/plugin-importer`. Pasting this directory's GitHub URL works too.
 Start a new session afterwards; Powers load at session start.
 
+**Run Kiro with `kiro-cli --v3`.** Classic mode and `--no-interactive` sessions load Powers and skills
+fine, but hooks silently do nothing in them — `/hooks` reports 0 either way. `--v3` is required for a
+ported plugin's hooks to fire at all.
+
 Requires `python3` (3.11+) and `git` on `PATH`. Built and exercised on macOS against kiro-cli
 2.21.0; other platforms and versions have not been checked.
 
