@@ -26,8 +26,17 @@ cd sample-apj-sup-sa
 git sparse-checkout set ai-coding-assistants/agent-plugins/plugin-importer
 ```
 
-Kiro **Powers** panel → **Add Custom Power** → **Import power from a folder** → select
-`ai-coding-assistants/agent-plugins/plugin-importer`. Pasting this directory's GitHub URL works too.
+Then either of these registers it as a Power:
+
+- **Kiro IDE**: **Powers** panel → **Add Custom Power** → **Import power from a folder** → select
+  `ai-coding-assistants/agent-plugins/plugin-importer`. Pasting this directory's GitHub URL works too.
+- **Kiro CLI only** (there is no `/powers add` in the CLI): let the converter install itself.
+
+  ```bash
+  cd ai-coding-assistants/agent-plugins/plugin-importer
+  python3 skills/import-plugins/scripts/kiro-port.py port --from . plugin-importer --as power
+  ```
+
 Start a new session afterwards; Powers load at session start.
 
 **Run Kiro with `kiro-cli --v3`.** Classic mode and `--no-interactive` sessions load Powers and skills

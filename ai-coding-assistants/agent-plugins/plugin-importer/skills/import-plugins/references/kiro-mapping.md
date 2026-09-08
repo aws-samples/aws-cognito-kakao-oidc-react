@@ -80,9 +80,13 @@ Fields Kiro has no equivalent for are reported rather than guessed at:
   headless sessions load the same `~/.kiro/hooks/*.json` file but `/hooks` reports 0 and nothing runs.
   If a hook seems to do nothing, check which mode the session was actually started in before assuming
   the conversion is wrong.
-- **Remote MCP servers in a Power are ignored.** `stdio` servers register with their tools; `http` and
-  `sse` servers produce nothing and no error. Their definition has to move to
-  `~/.kiro/settings/mcp.json`.
+- **kiro-cli does not read a Power's `mcp.json` on its own.** The IDE installer copies each server
+  into `~/.kiro/settings/mcp.json` under `powers.mcpServers` as `power-<power>-<server>`; without
+  that entry the Power activates but "reports no tools". `port` writes those entries itself so a
+  CLI-only install works, and `unport` removes them.
+- **Remote MCP servers in a Power are ignored.** Only `stdio` servers (ones with a `command`) are
+  registered; `http` and `sse` servers are skipped and reported. To use one, add it by hand to
+  `~/.kiro/settings/mcp.json` at the top level.
 - **Markdown agents do not appear in `kiro-cli agent list`, and `--agent <name>` cannot load one either**
   (`Error: no agent with name <name> found` — the classic agent registry is JSON-only). In `--v3` (KAS)
   sessions, `~/.kiro/agents/*.md` is loaded separately as a "user profile"; a plain-language request

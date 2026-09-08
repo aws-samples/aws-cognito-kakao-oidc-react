@@ -24,8 +24,17 @@ cd sample-apj-sup-sa
 git sparse-checkout set ai-coding-assistants/agent-plugins/plugin-importer
 ```
 
-Kiro **Powers** 패널 → **Add Custom Power** → **Import power from a folder** →
-`ai-coding-assistants/agent-plugins/plugin-importer` 선택. 이 디렉터리의 GitHub 주소를 붙여 넣어도 됩니다.
+그다음 아래 둘 중 하나로 Power로 등록합니다.
+
+- **Kiro IDE**: **Powers** 패널 → **Add Custom Power** → **Import power from a folder** →
+  `ai-coding-assistants/agent-plugins/plugin-importer` 선택. 이 디렉터리의 GitHub 주소를 붙여 넣어도 됩니다.
+- **Kiro CLI만 쓰는 경우** (CLI에는 Power 추가 명령이 없습니다): 변환기가 자기 자신을 설치합니다.
+
+  ```bash
+  cd ai-coding-assistants/agent-plugins/plugin-importer
+  python3 skills/import-plugins/scripts/kiro-port.py port --from . plugin-importer --as power
+  ```
+
 Power는 세션 시작 시 로드되므로 설치 후 새 세션을 여세요.
 
 **Kiro는 `kiro-cli --v3`로 실행하세요.** 클래식 모드나 `--no-interactive`에서도 Power·스킬은 정상 로드되지만,

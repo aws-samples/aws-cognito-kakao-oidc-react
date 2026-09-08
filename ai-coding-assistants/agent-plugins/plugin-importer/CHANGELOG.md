@@ -2,6 +2,13 @@
 
 ## 1.1.0
 
+- A source that is already an Agent Plugin (root `plugin.json` with `$schema`) keeps its own
+  manifest — the author's `keywords` and `version` are no longer replaced by name-derived ones — and
+  its bodies are not run through `${CLAUDE_PLUGIN_ROOT}` substitution. This is also how the
+  converter installs itself from a clone: `port --from . plugin-importer --as power`.
+- `stdio` MCP servers from a Power's `mcp.json` are registered in `~/.kiro/settings/mcp.json` under
+  `powers.mcpServers` as `power-<power>-<server>`, which is what kiro-cli actually reads; `unport`
+  removes them. Remote servers are skipped and reported.
 - Marketplace metadata is treated as untrusted. An entry's `name` must be a single path segment
   (`[\w.-]{1,64}`); a string `source` or a remote `path` must resolve inside its repository.
   Entries that fail either check are skipped with a warning, and the install directory is checked

@@ -136,6 +136,19 @@ def fx_guidance(root: Path) -> Path:
     return d
 
 
+def fx_agent_plugin(root: Path) -> Path:
+    """Already an Agent Plugin (root plugin.json with $schema) — the author's keywords must survive."""
+    d = root / "fx-ap"
+    d.mkdir(parents=True)
+    (d / "plugin.json").write_text(json.dumps({
+        "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+        "name": "fx-ap", "version": "3.0.0", "description": "already agent plugins",
+        "keywords": ["fx-ap", "플러그인 가져와", "bring plugins", "custom phrase"]}) + "\n")
+    (d / "skills/s1").mkdir(parents=True)
+    (d / "skills/s1/SKILL.md").write_text("---\nname: s1\ndescription: Fixture.\n---\n\nBody.\n")
+    return d
+
+
 def fx_marketplace(root: Path, plugins: list[Path], entries: list[dict] | None = None) -> Path:
     """A local marketplace holding the fixtures. `entries` overrides the generated plugin list."""
     mk = root / "market"
@@ -247,7 +260,13 @@ def test_mcp(root, kh, mk):
         check("wrapped in mcpServers", set(d.get("mcpServers", {})) == {"local", "remote"})
         check("server definition unchanged", d["mcpServers"]["local"]["command"] == "uvx")
     check("remote MCP warning", "Remote MCP" in out and "remote" in out)
+    st = kh / "settings/mcp.json"
+    ps = json.loads(st.read_text()).get("powers", {}).get("mcpServers", {}) if st.exists() else {}
+    check("stdio server registered as power-<name>-<server>", "power-fx-mcp-local" in ps and ps["power-fx-mcp-local"].get("command") == "uvx", str(ps))
+    check("remote server not registered", "power-fx-mcp-remote" not in ps)
     run(kh, "unport", "fx-mcp")
+    ps = json.loads(st.read_text()).get("powers", {}).get("mcpServers", {}) if st.exists() else {}
+    check("unport removes the MCP registration", "power-fx-mcp-local" not in ps)
 
 
 def test_agents(root, kh, mk):
@@ -308,6 +327,19 @@ def test_guards(root, kh, mk):
     rc, out = run(kh, "port", "--from", str(mk2), "preexisting")
     check("existing Power protected", "⛔" in out or "this tool created" in out or (kh / "powers/installed/preexisting-market").exists(),
           out[-300:])
+
+
+def test_agent_plugin_source(root, kh, mk):
+    print("\n[agent-plugin source] a source that is already an Agent Plugin keeps its own plugin.json")
+    rc, out = run(kh, "port", "--from", str(root / "fx-ap"), "fx-ap", "--as", "power")
+    pj = kh / "powers/installed/fx-ap/plugin.json"
+    check("Power created", pj.exists(), out[-400:])
+    if pj.exists():
+        d = json.loads(pj.read_text())
+        check("author's keywords kept", d.get("keywords") == ["fx-ap", "플러그인 가져와", "bring plugins", "custom phrase"], str(d.get("keywords")))
+        check("author's version kept", d.get("version") == "3.0.0")
+    check("report says manifest was kept", "already an Agent Plugin" in out)
+    run(kh, "unport", "fx-ap")
 
 
 def test_untrusted_names(root, kh, mk):
@@ -379,9 +411,11 @@ def main() -> None:
     (kh / "powers/installed.json").write_text('{"version":"1.0.0","installedPowers":[],"dismissedAutoInstalls":[]}')
     (kh / "powers/registries/user-added.json").write_text('{"powers":[],"version":"1.0.0"}')
     plugins = [f(root) for f in (fx_skills_only, fx_commands, fx_hooks, fx_flat_hooks, fx_mcp, fx_agents, fx_bulk, fx_guidance)]
+    fx_agent_plugin(root)
     mk = fx_marketplace(root / "m1", plugins)
     tests = [test_skills_only, test_commands, test_hooks, test_flat_hooks, test_mcp, test_agents,
-             test_bulk, test_guidance, test_overrides, test_untrusted_names, test_project_local, test_guards]
+             test_bulk, test_guidance, test_overrides, test_agent_plugin_source, test_untrusted_names,
+             test_project_local, test_guards]
     print(f"isolated environment: {kh}")
     for t in tests:
         if a.filt and a.filt not in t.__name__:

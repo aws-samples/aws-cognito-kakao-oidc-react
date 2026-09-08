@@ -280,8 +280,12 @@ class Port:
                                f"(kirodotdev/Kiro#10625); this many can stall the shell with `spawn EBADF`")
         skills = self.dst / "skills"
         skill_names = [d.name for d in skills.iterdir() if (d / "SKILL.md").exists()] if skills.is_dir() else []
-        # 2) Substitute ${CLAUDE_PLUGIN_ROOT} inside skills/ bodies only
-        for f in skills.rglob("*") if skills.is_dir() else []:
+        # 2) Substitute ${CLAUDE_PLUGIN_ROOT} inside skills/ bodies only. Skipped when the source is
+        #    already an Agent Plugin: those never use the token, and a file that merely mentions it
+        #    (a script or doc) must not be rewritten.
+        root_pj = self.src / "plugin.json"
+        already_ap = root_pj.exists() and "agent-plugins.org" in str(json.loads(root_pj.read_text()).get("$schema", ""))
+        for f in (skills.rglob("*") if skills.is_dir() and not already_ap else []):
             if f.is_file() and f.suffix in (".md", ".sh", ".py", ".json", ".yaml", ".yml"):
                 t = f.read_text(errors="replace")
                 if self.root_token in t:
@@ -295,18 +299,30 @@ class Port:
         if others:
             self.report.append(f"- ❌ Commands that aren't `.md` are not converted: {others}")
         # 4) plugin.json (root)
-        pj = {"$schema": PLUGIN_SCHEMA, "name": name,
-              "version": str(m.get("version") or version_hint or "1.0.0"),
-              "description": m.get("description", "")}
-        for k in ("author", "license", "homepage", "repository"):
-            if k in m:
-                pj[k] = m[k]
-        pj["keywords"] = sorted(set([pj["name"]] + skill_names))
-        (self.dst / "plugin.json").write_text(json.dumps(pj, ensure_ascii=False, indent=2) + "\n")
-        self.report.append(f"- Generated `plugin.json`. `keywords` were derived **from names only**: "
-                           f"{pj['keywords']} — these are activation triggers, edit directly if you need more")
-        if not m.get("version"):
-            self.report.append("- Source had no `version` → defaulted to `1.0.0`")
+        existing = json.loads(root_pj.read_text()) if root_pj.exists() else {}
+        if already_ap:
+            # Already an Agent Plugin: the author's manifest is the source of truth — in particular
+            # their keywords, which are the activation triggers. Only the name is aligned.
+            pj = dict(existing)
+            pj["name"] = name
+            pj.setdefault("version", str(version_hint or "1.0.0"))
+            pj.setdefault("keywords", sorted(set([name] + skill_names)))
+            (self.dst / "plugin.json").write_text(json.dumps(pj, ensure_ascii=False, indent=2) + "\n")
+            self.report.append(f"- Source is already an Agent Plugin — kept its `plugin.json` "
+                               f"({len(pj['keywords'])} keyword(s) as the author set them)")
+        else:
+            pj = {"$schema": PLUGIN_SCHEMA, "name": name,
+                  "version": str(m.get("version") or version_hint or "1.0.0"),
+                  "description": m.get("description", "")}
+            for k in ("author", "license", "homepage", "repository"):
+                if k in m:
+                    pj[k] = m[k]
+            pj["keywords"] = sorted(set([pj["name"]] + skill_names))
+            (self.dst / "plugin.json").write_text(json.dumps(pj, ensure_ascii=False, indent=2) + "\n")
+            self.report.append(f"- Generated `plugin.json`. `keywords` were derived **from names only**: "
+                               f"{pj['keywords']} — these are activation triggers, edit directly if you need more")
+            if not m.get("version"):
+                self.report.append("- Source had no `version` → defaulted to `1.0.0`")
         # 5) .mcp.json → mcp.json
         mcp_src = self.dst / ".mcp.json"
         if mcp_src.exists():
@@ -684,6 +700,26 @@ def register(name: str, power_dir: Path, report: list[str]) -> None:
     if not any(p["name"] == name for p in inst["installedPowers"]):
         inst["installedPowers"].append({"name": name, "registryId": "user-added"})
     _save(inst_p, inst)
+    # MCP servers: kiro-cli doesn't read a Power's mcp.json at runtime — the IDE installer merges it
+    # into ~/.kiro/settings/mcp.json under powers.mcpServers as `power-<power>-<server>`. Without
+    # that entry the Power activates but "reports no tools". Done here so a CLI-only install works.
+    # Only stdio servers: Kiro never starts remote (http/sse) ones from a Power.
+    mcp = power_dir / "mcp.json"
+    if mcp.exists():
+        settings = KIRO / "settings/mcp.json"
+        cur = _load(settings, {})
+        ps = cur.setdefault("powers", {}).setdefault("mcpServers", {})
+        added = []
+        for key, srv in json.loads(mcp.read_text()).get("mcpServers", {}).items():
+            if not srv.get("command"):
+                continue
+            ent = {k: v for k, v in srv.items() if k != "type"}
+            ent.setdefault("disabled", False)
+            ps[f"power-{name}-{key}"] = ent
+            added.append(key)
+        if added:
+            _save(settings, cur)
+            report.append(f"- MCP server(s) registered in `{settings}` (powers.mcpServers): {added} — starts when the Power activates")
     # Things that have to live outside the Power
     for hook in (power_dir / "dev.kiro/hooks").glob("*.json"):
         dst = KIRO / "hooks" / hook.name
@@ -747,6 +783,15 @@ def unregister(name: str, cwd: Path) -> bool:
     _save(reg_p, reg)
     inst["installedPowers"] = [p for p in inst["installedPowers"] if p.get("name") != name]
     _save(inst_p, inst)
+    settings = KIRO / "settings/mcp.json"
+    if settings.exists():
+        cur = _load(settings, {})
+        ps = cur.get("powers", {}).get("mcpServers", {})
+        mine = [k for k in ps if k.startswith(f"power-{name}-")]
+        for k in mine:
+            del ps[k]
+        if mine:
+            _save(settings, cur)
     print(f"removed {name}")
     return True
 
