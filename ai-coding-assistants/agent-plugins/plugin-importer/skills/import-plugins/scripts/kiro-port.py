@@ -44,6 +44,13 @@ FILE_WARN = 2000  # warn past this many files
 AGENT_DROP_KEYS = {"tools", "model", "mcpServers", "hooks", "permissionMode", "color", "effort",
                    "initialPrompt", "disallowedTools", "skills", "memory", "background", "isolation", "maxTurns"}
 MANIFEST = Path(os.environ.get("KIRO_HOME", HOME / ".kiro")) / ".kiro-port-manifest.json"
+# kiro-cli's own slash commands (from `/help`, kiro-cli 2.21.1). A skill whose `name:` matches one
+# of these is shadowed in the slash list — the built-in wins — so --slash warns about it.
+KIRO_BUILTIN_SLASH = {
+    "agent", "changelog", "chat", "clear", "code", "compact", "config", "context", "copy", "editor",
+    "effort", "exit", "feedback", "help", "hooks", "knowledge", "mcp", "model", "paste", "plan",
+    "powers", "prompts", "quit", "reply", "rewind", "session-id", "sessions", "settings", "spawn",
+    "spec", "switch", "tangent", "title", "tools", "transcript", "upgrade-agent"}
 
 
 def classify(src: Path) -> tuple[str, dict]:
@@ -738,7 +745,7 @@ def register(name: str, power_dir: Path, report: list[str], slash: bool = False)
         # Kiro only offers `/name` for skills under ~/.kiro/skills/. A symlink there is enough —
         # Kiro follows it, the skill body stays in the Power (one copy, no extra fds), and the
         # Power's own keyword activation keeps working alongside.
-        linked, clashed = [], []
+        linked, slash_names, clashed, shadowed = [], [], [], []
         (KIRO / "skills").mkdir(parents=True, exist_ok=True)
         for sk in sorted((power_dir / "skills").iterdir()) if (power_dir / "skills").is_dir() else []:
             if not (sk / "SKILL.md").exists():
@@ -751,8 +758,17 @@ def register(name: str, power_dir: Path, report: list[str], slash: bool = False)
                 continue
             link.symlink_to(sk)
             linked.append(sk.name)
+            # Kiro names the slash command after the SKILL.md `name:` field, not the directory
+            mt = re.search(r"^name:\s*(\S+)", (sk / "SKILL.md").read_text(errors="ignore"), re.M)
+            sname = mt.group(1) if mt else sk.name
+            slash_names.append(sname)
+            if sname in KIRO_BUILTIN_SLASH:
+                shadowed.append(sname)
         if linked:
-            report.append(f"- Slash commands: {['/' + n for n in linked]} → symlinks in `{KIRO / 'skills'}` pointing into the Power")
+            report.append(f"- Slash commands: {['/' + n for n in slash_names]} → symlinks in `{KIRO / 'skills'}` pointing into the Power")
+        if shadowed:
+            report.append(f"- ⚠️ {['/' + n for n in shadowed]} collide with Kiro's own built-in commands and won't show up in the "
+                          f"slash list — Kiro's built-in wins. Still reachable by asking in plain language")
         if clashed:
             report.append(f"- ⚠️ Not exposed as slash commands, a skill with that name already exists: {clashed}")
         _manifest_put(name, {"mode": "power", "slash": linked})

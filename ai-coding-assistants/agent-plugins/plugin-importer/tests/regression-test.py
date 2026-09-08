@@ -357,6 +357,18 @@ def test_slash(root, kh, mk):
     rc, out = run(kh, "port", "--from", str(mk), "fx-cmd", "--slash")
     check("clashing name not overwritten", not (kh / "skills/deploy").is_symlink() and "mine" in (kh / "skills/deploy/SKILL.md").read_text())
     check("clash reported", "already exists" in out)
+    # slash name comes from SKILL.md `name:`, and built-in collisions are called out
+    p = root / "fx-slashnames"
+    (p / ".claude-plugin").mkdir(parents=True, exist_ok=True)
+    (p / ".claude-plugin/plugin.json").write_text(json.dumps({"name": "fx-slashnames", "description": "x"}))
+    (p / "skills/dirname").mkdir(parents=True, exist_ok=True)
+    (p / "skills/dirname/SKILL.md").write_text("---\nname: real-slash-name\ndescription: x\n---\n\nbody\n")
+    (p / "skills/help").mkdir(parents=True, exist_ok=True)
+    (p / "skills/help/SKILL.md").write_text("---\nname: help\ndescription: x\n---\n\nbody\n")
+    rc, out = run(kh, "port", "--from", str(p), "fx-slashnames", "--as", "power", "--slash")
+    check("report uses the frontmatter name", "/real-slash-name" in out and "/dirname" not in out, out[-500:])
+    check("built-in collision warned", "/help" in out and "built-in" in out, out[-500:])
+    run(kh, "unport", "fx-slashnames")
     run(kh, "unport", "fx-hook")
     check("unport removes the symlink", not link.exists() and not link.is_symlink())
     run(kh, "unport", "fx-cmd")
