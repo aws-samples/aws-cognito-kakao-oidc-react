@@ -2,6 +2,10 @@
 
 ## 1.1.0
 
+- `--slash` exposes a Power's skills as `/name` slash commands by symlinking each one into
+  `~/.kiro/skills/`. Kiro follows the link, so nothing is copied and the Power's keyword activation
+  keeps working alongside. Names already taken in `~/.kiro/skills/` are skipped and reported;
+  `unport` removes only the links it made.
 - A source that is already an Agent Plugin (root `plugin.json` with `$schema`) keeps its own
   manifest — the author's `keywords` and `version` are no longer replaced by name-derived ones — and
   its bodies are not run through `${CLAUDE_PLUGIN_ROOT}` substitution. This is also how the

@@ -342,6 +342,28 @@ def test_agent_plugin_source(root, kh, mk):
     run(kh, "unport", "fx-ap")
 
 
+def test_slash(root, kh, mk):
+    print("\n[--slash] a Power's skills are exposed as /name via symlinks, removed on unport")
+    (kh / "skills/deploy").mkdir(parents=True)  # pre-existing real skill with a clashing name
+    (kh / "skills/deploy/SKILL.md").write_text("---\nname: deploy\ndescription: mine\n---\n\nmine\n")
+    # a stale link into the same Power path (left by an earlier install) must be taken over, not treated as a clash
+    (kh / "skills/only").symlink_to(kh / "powers/installed/fx-hook/skills/only")
+    rc, out = run(kh, "port", "--from", str(mk), "fx-hook", "--as", "power", "--slash")
+    link = kh / "skills/only"
+    check("stale link into the same Power is adopted", "/only" in out and "already exists" not in out.split("fx-hook")[-1][:600], out[-400:])
+    check("symlink created", link.is_symlink(), out[-400:])
+    check("symlink points into the Power", link.is_symlink() and (kh / "powers/installed/fx-hook/skills/only").resolve() == link.resolve())
+    check("report lists /only", "/only" in out)
+    rc, out = run(kh, "port", "--from", str(mk), "fx-cmd", "--slash")
+    check("clashing name not overwritten", not (kh / "skills/deploy").is_symlink() and "mine" in (kh / "skills/deploy/SKILL.md").read_text())
+    check("clash reported", "already exists" in out)
+    run(kh, "unport", "fx-hook")
+    check("unport removes the symlink", not link.exists() and not link.is_symlink())
+    run(kh, "unport", "fx-cmd")
+    check("real skill untouched by unport", (kh / "skills/deploy/SKILL.md").exists())
+    shutil.rmtree(kh / "skills/deploy")
+
+
 def test_untrusted_names(root, kh, mk):
     print("\n[untrusted] marketplace entries can't name paths outside ~/.kiro or the repo")
     escape_abs = root / "escaped-abs"          # an absolute path an attacker might target
@@ -414,7 +436,7 @@ def main() -> None:
     fx_agent_plugin(root)
     mk = fx_marketplace(root / "m1", plugins)
     tests = [test_skills_only, test_commands, test_hooks, test_flat_hooks, test_mcp, test_agents,
-             test_bulk, test_guidance, test_overrides, test_agent_plugin_source, test_untrusted_names,
+             test_bulk, test_guidance, test_overrides, test_agent_plugin_source, test_slash, test_untrusted_names,
              test_project_local, test_guards]
     print(f"isolated environment: {kh}")
     for t in tests:

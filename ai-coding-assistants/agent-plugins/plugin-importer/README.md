@@ -101,7 +101,9 @@ only where nothing else can carry the component.
 | hooks or agents but no skills | a Power | Somewhere to hold them |
 | Markdown guidance only | nothing moved; `~/.kiro/steering/` path only | A Power is conditional; steering is always-on — different jobs |
 
-`--as skills` and `--as power` override this. Guidance files are never converted automatically — a
+`--as skills` and `--as power` override this. A Power's skills are not slash commands; if you want
+`/name` for them as well — the way a Claude Code bundle let you pick one command — add `--slash`, which
+links each skill into `~/.kiro/skills/` without copying it. Guidance files are never converted automatically — a
 steering file with `inclusion: always` is the closer match, since it stays always-on the way the
 guidance did.
 

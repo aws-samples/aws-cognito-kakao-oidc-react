@@ -688,7 +688,7 @@ def unregister_project(name: str, project: Path) -> bool:
     return True
 
 
-def register(name: str, power_dir: Path, report: list[str]) -> None:
+def register(name: str, power_dir: Path, report: list[str], slash: bool = False) -> None:
     reg_p = KIRO / "powers/registries/user-added.json"
     reg = _load(reg_p, {"powers": []})
     reg["powers"] = [p for p in reg["powers"] if p["name"] != name]
@@ -734,6 +734,28 @@ def register(name: str, power_dir: Path, report: list[str]) -> None:
         dst.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy(ag, dst)
         report.append(f"- Agent installed: `{dst}`")
+    if slash:
+        # Kiro only offers `/name` for skills under ~/.kiro/skills/. A symlink there is enough —
+        # Kiro follows it, the skill body stays in the Power (one copy, no extra fds), and the
+        # Power's own keyword activation keeps working alongside.
+        linked, clashed = [], []
+        (KIRO / "skills").mkdir(parents=True, exist_ok=True)
+        for sk in sorted((power_dir / "skills").iterdir()) if (power_dir / "skills").is_dir() else []:
+            if not (sk / "SKILL.md").exists():
+                continue
+            link = KIRO / "skills" / sk.name
+            if link.is_symlink() and str(os.readlink(link)).startswith(str(power_dir)):
+                link.unlink()  # a link into this same Power from an earlier install — take it over
+            elif link.exists() or link.is_symlink():
+                clashed.append(sk.name)
+                continue
+            link.symlink_to(sk)
+            linked.append(sk.name)
+        if linked:
+            report.append(f"- Slash commands: {['/' + n for n in linked]} → symlinks in `{KIRO / 'skills'}` pointing into the Power")
+        if clashed:
+            report.append(f"- ⚠️ Not exposed as slash commands, a skill with that name already exists: {clashed}")
+        _manifest_put(name, {"mode": "power", "slash": linked})
 
 
 def unregister(name: str, cwd: Path) -> bool:
@@ -771,6 +793,11 @@ def unregister(name: str, cwd: Path) -> bool:
               f"or under {KIRO / 'powers/installed'}")
         return False
     if ent:
+        for sk in ent.get("slash", []):
+            link = KIRO / "skills" / sk
+            # only ever remove a symlink that points into this Power — never a real skill directory
+            if link.is_symlink() and str(link.resolve()).startswith(str(power_dir.resolve())):
+                link.unlink()
         del man[name]
         _save(MANIFEST, man)
     if power_dir.is_dir():
@@ -830,6 +857,8 @@ def main() -> None:
                     help="skip install records and go straight to a marketplace/plugin repo: local path | owner/repo | git URL")
     ap.add_argument("--as", dest="mode", choices=["auto", "skills", "power"], default="auto",
                     help="install mode. auto (default): skills-only goes to ~/.kiro/skills/, mixed goes to a Power")
+    ap.add_argument("--slash", action="store_true",
+                    help="also expose a Power's skills as /name slash commands (symlinks under ~/.kiro/skills/)")
     a = ap.parse_args()
     cwd = Path.cwd().resolve()
 
@@ -959,7 +988,7 @@ def main() -> None:
             if s["scope"] == "project":
                 report.append(f"- ⚠️ Source was project-scoped to `{s['project']}` but the Power installed globally. "
                               f"Run `--project-local` from that directory to keep it project-only")
-            register(name, power_dir, report)
+            register(name, power_dir, report, slash=a.slash)
         report.append("")
         report.append("## Worth checking by hand")
         if mode == "skills":
