@@ -24,8 +24,17 @@ cd sample-apj-sup-sa
 git sparse-checkout set ai-coding-assistants/agent-plugins/plugin-importer
 ```
 
-Kiro **Powers** 패널 → **Add Custom Power** → **Import power from a folder** →
-`ai-coding-assistants/agent-plugins/plugin-importer` 선택. 이 디렉터리의 GitHub 주소를 붙여 넣어도 됩니다.
+그다음 아래 둘 중 하나로 Power로 등록합니다.
+
+- **Kiro IDE**: **Powers** 패널 → **Add Custom Power** → **Import power from a folder** →
+  `ai-coding-assistants/agent-plugins/plugin-importer` 선택. 이 디렉터리의 GitHub 주소를 붙여 넣어도 됩니다.
+- **Kiro CLI만 쓰는 경우** (CLI에는 Power 추가 명령이 없습니다): 변환기가 자기 자신을 설치합니다.
+
+  ```bash
+  cd ai-coding-assistants/agent-plugins/plugin-importer
+  python3 skills/import-plugins/scripts/kiro-port.py port --from . plugin-importer --as power
+  ```
+
 Power는 세션 시작 시 로드되므로 설치 후 새 세션을 여세요.
 
 **Kiro는 `kiro-cli --v3`로 실행하세요.** 클래식 모드나 `--no-interactive`에서도 Power·스킬은 정상 로드되지만,
@@ -84,7 +93,9 @@ git 저장소를 가리켜도 따라갑니다. 원하는 것을 이름으로 지
 | 스킬 없이 훅·에이전트만 | Power | 담을 자리가 필요해서입니다 |
 | 마크다운 지침뿐 | 옮기지 않고 `~/.kiro/steering/` 경로만 안내 | Power는 조건부, steering은 항상 적용이라 성격이 다릅니다 |
 
-`--as skills` 와 `--as power` 로 뒤집을 수 있습니다. 지침 파일은 자동 변환하지 않습니다. `inclusion: always`
+`--as skills` 와 `--as power` 로 뒤집을 수 있습니다. Power 안 스킬은 슬래시 명령이 아닙니다. Claude Code 번들에서
+`/명령`으로 하나씩 골라 쓰던 것처럼 `/이름`으로도 부르고 싶으면 `--slash` 를 붙이세요 — 스킬을 복사하지 않고
+`~/.kiro/skills/` 에 링크만 놓습니다. 지침 파일은 자동 변환하지 않습니다. `inclusion: always`
 가 붙은 steering 파일이 원래 지침처럼 항상 적용된다는 점에서 더 가깝습니다.
 
 본문은 바이트 단위로 복사되고, 하나라도 다르면 이식이 중단됩니다. 원본 `.claude-plugin/`·`commands/`·

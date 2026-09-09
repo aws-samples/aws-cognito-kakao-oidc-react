@@ -54,7 +54,9 @@ Follow the recommendation from `scan` unless the user wants otherwise:
 | Markdown guidance only | nothing is moved; report the `~/.kiro/steering/` path and stop |
 
 `--as skills` and `--as power` override it. `--as skills` on a plugin with commands or MCP drops
-those, and the script says so. `--project-local` writes into the current project's `.kiro/` instead of
+those, and the script says so. `--slash` also exposes a Power's skills as `/name` slash commands
+(symlinks under `~/.kiro/skills/`) — use it when the user wants to pick one skill out of a bundle
+the way they did with `/command` in Claude Code, or asks for slash commands. `--project-local` writes into the current project's `.kiro/` instead of
 installing globally. `--out DIR` only generates, which is how you turn a marketplace into a
 Kiro-installable monorepo. `--smoke` checks that Kiro loads the result.
 

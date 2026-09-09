@@ -44,6 +44,13 @@ FILE_WARN = 2000  # warn past this many files
 AGENT_DROP_KEYS = {"tools", "model", "mcpServers", "hooks", "permissionMode", "color", "effort",
                    "initialPrompt", "disallowedTools", "skills", "memory", "background", "isolation", "maxTurns"}
 MANIFEST = Path(os.environ.get("KIRO_HOME", HOME / ".kiro")) / ".kiro-port-manifest.json"
+# kiro-cli's own slash commands (from `/help`, kiro-cli 2.21.1). A skill whose `name:` matches one
+# of these is shadowed in the slash list — the built-in wins — so --slash warns about it.
+KIRO_BUILTIN_SLASH = {
+    "agent", "changelog", "chat", "clear", "code", "compact", "config", "context", "copy", "editor",
+    "effort", "exit", "feedback", "help", "hooks", "knowledge", "mcp", "model", "paste", "plan",
+    "powers", "prompts", "quit", "reply", "rewind", "session-id", "sessions", "settings", "spawn",
+    "spec", "switch", "tangent", "title", "tools", "transcript", "upgrade-agent"}
 
 
 def classify(src: Path) -> tuple[str, dict]:
@@ -280,8 +287,12 @@ class Port:
                                f"(kirodotdev/Kiro#10625); this many can stall the shell with `spawn EBADF`")
         skills = self.dst / "skills"
         skill_names = [d.name for d in skills.iterdir() if (d / "SKILL.md").exists()] if skills.is_dir() else []
-        # 2) Substitute ${CLAUDE_PLUGIN_ROOT} inside skills/ bodies only
-        for f in skills.rglob("*") if skills.is_dir() else []:
+        # 2) Substitute ${CLAUDE_PLUGIN_ROOT} inside skills/ bodies only. Skipped when the source is
+        #    already an Agent Plugin: those never use the token, and a file that merely mentions it
+        #    (a script or doc) must not be rewritten.
+        root_pj = self.src / "plugin.json"
+        already_ap = root_pj.exists() and "agent-plugins.org" in str(json.loads(root_pj.read_text()).get("$schema", ""))
+        for f in (skills.rglob("*") if skills.is_dir() and not already_ap else []):
             if f.is_file() and f.suffix in (".md", ".sh", ".py", ".json", ".yaml", ".yml"):
                 t = f.read_text(errors="replace")
                 if self.root_token in t:
@@ -295,18 +306,30 @@ class Port:
         if others:
             self.report.append(f"- ❌ Commands that aren't `.md` are not converted: {others}")
         # 4) plugin.json (root)
-        pj = {"$schema": PLUGIN_SCHEMA, "name": name,
-              "version": str(m.get("version") or version_hint or "1.0.0"),
-              "description": m.get("description", "")}
-        for k in ("author", "license", "homepage", "repository"):
-            if k in m:
-                pj[k] = m[k]
-        pj["keywords"] = sorted(set([pj["name"]] + skill_names))
-        (self.dst / "plugin.json").write_text(json.dumps(pj, ensure_ascii=False, indent=2) + "\n")
-        self.report.append(f"- Generated `plugin.json`. `keywords` were derived **from names only**: "
-                           f"{pj['keywords']} — these are activation triggers, edit directly if you need more")
-        if not m.get("version"):
-            self.report.append("- Source had no `version` → defaulted to `1.0.0`")
+        existing = json.loads(root_pj.read_text()) if root_pj.exists() else {}
+        if already_ap:
+            # Already an Agent Plugin: the author's manifest is the source of truth — in particular
+            # their keywords, which are the activation triggers. Only the name is aligned.
+            pj = dict(existing)
+            pj["name"] = name
+            pj.setdefault("version", str(version_hint or "1.0.0"))
+            pj.setdefault("keywords", sorted(set([name] + skill_names)))
+            (self.dst / "plugin.json").write_text(json.dumps(pj, ensure_ascii=False, indent=2) + "\n")
+            self.report.append(f"- Source is already an Agent Plugin — kept its `plugin.json` "
+                               f"({len(pj['keywords'])} keyword(s) as the author set them)")
+        else:
+            pj = {"$schema": PLUGIN_SCHEMA, "name": name,
+                  "version": str(m.get("version") or version_hint or "1.0.0"),
+                  "description": m.get("description", "")}
+            for k in ("author", "license", "homepage", "repository"):
+                if k in m:
+                    pj[k] = m[k]
+            pj["keywords"] = sorted(set([pj["name"]] + skill_names))
+            (self.dst / "plugin.json").write_text(json.dumps(pj, ensure_ascii=False, indent=2) + "\n")
+            self.report.append(f"- Generated `plugin.json`. `keywords` were derived **from names only**: "
+                               f"{pj['keywords']} — these are activation triggers, edit directly if you need more")
+            if not m.get("version"):
+                self.report.append("- Source had no `version` → defaulted to `1.0.0`")
         # 5) .mcp.json → mcp.json
         mcp_src = self.dst / ".mcp.json"
         if mcp_src.exists():
@@ -672,7 +695,7 @@ def unregister_project(name: str, project: Path) -> bool:
     return True
 
 
-def register(name: str, power_dir: Path, report: list[str]) -> None:
+def register(name: str, power_dir: Path, report: list[str], slash: bool = False) -> None:
     reg_p = KIRO / "powers/registries/user-added.json"
     reg = _load(reg_p, {"powers": []})
     reg["powers"] = [p for p in reg["powers"] if p["name"] != name]
@@ -684,6 +707,26 @@ def register(name: str, power_dir: Path, report: list[str]) -> None:
     if not any(p["name"] == name for p in inst["installedPowers"]):
         inst["installedPowers"].append({"name": name, "registryId": "user-added"})
     _save(inst_p, inst)
+    # MCP servers: kiro-cli doesn't read a Power's mcp.json at runtime — the IDE installer merges it
+    # into ~/.kiro/settings/mcp.json under powers.mcpServers as `power-<power>-<server>`. Without
+    # that entry the Power activates but "reports no tools". Done here so a CLI-only install works.
+    # Only stdio servers: Kiro never starts remote (http/sse) ones from a Power.
+    mcp = power_dir / "mcp.json"
+    if mcp.exists():
+        settings = KIRO / "settings/mcp.json"
+        cur = _load(settings, {})
+        ps = cur.setdefault("powers", {}).setdefault("mcpServers", {})
+        added = []
+        for key, srv in json.loads(mcp.read_text()).get("mcpServers", {}).items():
+            if not srv.get("command"):
+                continue
+            ent = {k: v for k, v in srv.items() if k != "type"}
+            ent.setdefault("disabled", False)
+            ps[f"power-{name}-{key}"] = ent
+            added.append(key)
+        if added:
+            _save(settings, cur)
+            report.append(f"- MCP server(s) registered in `{settings}` (powers.mcpServers): {added} — starts when the Power activates")
     # Things that have to live outside the Power
     for hook in (power_dir / "dev.kiro/hooks").glob("*.json"):
         dst = KIRO / "hooks" / hook.name
@@ -698,6 +741,37 @@ def register(name: str, power_dir: Path, report: list[str]) -> None:
         dst.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy(ag, dst)
         report.append(f"- Agent installed: `{dst}`")
+    if slash:
+        # Kiro only offers `/name` for skills under ~/.kiro/skills/. A symlink there is enough —
+        # Kiro follows it, the skill body stays in the Power (one copy, no extra fds), and the
+        # Power's own keyword activation keeps working alongside.
+        linked, slash_names, clashed, shadowed = [], [], [], []
+        (KIRO / "skills").mkdir(parents=True, exist_ok=True)
+        for sk in sorted((power_dir / "skills").iterdir()) if (power_dir / "skills").is_dir() else []:
+            if not (sk / "SKILL.md").exists():
+                continue
+            link = KIRO / "skills" / sk.name
+            if link.is_symlink() and str(os.readlink(link)).startswith(str(power_dir)):
+                link.unlink()  # a link into this same Power from an earlier install — take it over
+            elif link.exists() or link.is_symlink():
+                clashed.append(sk.name)
+                continue
+            link.symlink_to(sk)
+            linked.append(sk.name)
+            # Kiro names the slash command after the SKILL.md `name:` field, not the directory
+            mt = re.search(r"^name:\s*(\S+)", (sk / "SKILL.md").read_text(errors="ignore"), re.M)
+            sname = mt.group(1) if mt else sk.name
+            slash_names.append(sname)
+            if sname in KIRO_BUILTIN_SLASH:
+                shadowed.append(sname)
+        if linked:
+            report.append(f"- Slash commands: {['/' + n for n in slash_names]} → symlinks in `{KIRO / 'skills'}` pointing into the Power")
+        if shadowed:
+            report.append(f"- ⚠️ {['/' + n for n in shadowed]} collide with Kiro's own built-in commands and won't show up in the "
+                          f"slash list — Kiro's built-in wins. Still reachable by asking in plain language")
+        if clashed:
+            report.append(f"- ⚠️ Not exposed as slash commands, a skill with that name already exists: {clashed}")
+        _manifest_put(name, {"mode": "power", "slash": linked})
 
 
 def unregister(name: str, cwd: Path) -> bool:
@@ -735,6 +809,11 @@ def unregister(name: str, cwd: Path) -> bool:
               f"or under {KIRO / 'powers/installed'}")
         return False
     if ent:
+        for sk in ent.get("slash", []):
+            link = KIRO / "skills" / sk
+            # only ever remove a symlink that points into this Power — never a real skill directory
+            if link.is_symlink() and str(link.resolve()).startswith(str(power_dir.resolve())):
+                link.unlink()
         del man[name]
         _save(MANIFEST, man)
     if power_dir.is_dir():
@@ -747,6 +826,15 @@ def unregister(name: str, cwd: Path) -> bool:
     _save(reg_p, reg)
     inst["installedPowers"] = [p for p in inst["installedPowers"] if p.get("name") != name]
     _save(inst_p, inst)
+    settings = KIRO / "settings/mcp.json"
+    if settings.exists():
+        cur = _load(settings, {})
+        ps = cur.get("powers", {}).get("mcpServers", {})
+        mine = [k for k in ps if k.startswith(f"power-{name}-")]
+        for k in mine:
+            del ps[k]
+        if mine:
+            _save(settings, cur)
     print(f"removed {name}")
     return True
 
@@ -785,6 +873,8 @@ def main() -> None:
                     help="skip install records and go straight to a marketplace/plugin repo: local path | owner/repo | git URL")
     ap.add_argument("--as", dest="mode", choices=["auto", "skills", "power"], default="auto",
                     help="install mode. auto (default): skills-only goes to ~/.kiro/skills/, mixed goes to a Power")
+    ap.add_argument("--slash", action="store_true",
+                    help="also expose a Power's skills as /name slash commands (symlinks under ~/.kiro/skills/)")
     a = ap.parse_args()
     cwd = Path.cwd().resolve()
 
@@ -914,7 +1004,7 @@ def main() -> None:
             if s["scope"] == "project":
                 report.append(f"- ⚠️ Source was project-scoped to `{s['project']}` but the Power installed globally. "
                               f"Run `--project-local` from that directory to keep it project-only")
-            register(name, power_dir, report)
+            register(name, power_dir, report, slash=a.slash)
         report.append("")
         report.append("## Worth checking by hand")
         if mode == "skills":
